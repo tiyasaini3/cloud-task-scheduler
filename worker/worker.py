@@ -57,11 +57,11 @@ def send_reminder(job: dict) -> bool:
     try:
         log = db.query(models.ReminderLog).filter(
             models.ReminderLog.task_id == task_id,
-            models.ReminderLog.status == models.ReminderStatus.QUEUED,
+            models.ReminderLog.status == "queued",
         ).order_by(models.ReminderLog.scheduled_for.asc()).first()
 
         if log:
-            log.status = models.ReminderStatus.SENT
+            log.status = "sent"
             log.sent_at = datetime.utcnow()
             log.message = message
             db.commit()
@@ -109,7 +109,7 @@ def process_job(job_str: str) -> None:
 
     if wait_seconds > 0:
         logger.info(f"task={task_id} sleeping {wait_seconds:.1f}s until {remind_at_str}")
-        cache.set_job_state(task_id, "pending", {"remind_at": remind_at_str, "wait_seconds": wait_seconds})
+        cache.set_job_state(task_id, "pending", {"remind_at": remind_at_str})
         slept = 0.0
         while slept < wait_seconds and _running:
             chunk = min(5.0, wait_seconds - slept)
@@ -140,10 +140,10 @@ def process_job(job_str: str) -> None:
     try:
         log = db.query(models.ReminderLog).filter(
             models.ReminderLog.task_id == task_id,
-            models.ReminderLog.status == models.ReminderStatus.QUEUED,
+            models.ReminderLog.status == "queued",
         ).first()
         if log:
-            log.status = models.ReminderStatus.FAILED
+            log.status = "failed"
             log.error_detail = "Max retries exceeded"
             db.commit()
     finally:

@@ -81,13 +81,13 @@ def create_task(payload: schemas.TaskCreate, db: Session = Depends(get_db)):
                     task_title=task.title,
                     owner_id=task.owner_id,
                     scheduled_for=remind_at,
-                    status=models.ReminderStatus.QUEUED,
+                    status="queued",
                     message=f"Reminder for '{task.title}' due {task.deadline}",
                 )
                 db.add(log)
 
     if queued > 0:
-        task.status = models.TaskStatus.SCHEDULED
+        task.status = "scheduled"
     db.commit()
     db.refresh(task)
 
@@ -126,7 +126,7 @@ def get_task(task_id: UUID, db: Session = Depends(get_db)):
     task = _get_or_404(task_id, db)
     cache.cache_task(str(task_id), {
         "id": str(task.id), "title": task.title, "description": task.description,
-        "owner_id": task.owner_id, "status": task.status.value,
+        "owner_id": task.owner_id, "status": task.status,
         "deadline": str(task.deadline), "reminder_minutes_before": task.reminder_minutes_before,
         "created_at": str(task.created_at), "updated_at": str(task.updated_at),
         "completed_at": str(task.completed_at) if task.completed_at else None,
@@ -139,7 +139,10 @@ def get_task(task_id: UUID, db: Session = Depends(get_db)):
 def update_task(task_id: UUID, payload: schemas.TaskUpdate, db: Session = Depends(get_db)):
     task = _get_or_404(task_id, db)
     for field, value in payload.dict(exclude_unset=True).items():
-        setattr(task, field, value)
+        if isinstance(value, str) or value is None:
+            setattr(task, field, value)
+        else:
+            setattr(task, field, str(value) if hasattr(value, 'value') else value)
     task.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(task)
@@ -151,9 +154,9 @@ def update_task(task_id: UUID, payload: schemas.TaskUpdate, db: Session = Depend
 @app.post("/tasks/{task_id}/complete", response_model=schemas.TaskResponse, tags=["Tasks"])
 def complete_task(task_id: UUID, db: Session = Depends(get_db)):
     task = _get_or_404(task_id, db)
-    if task.status == models.TaskStatus.COMPLETED:
+    if task.status == "completed":
         raise HTTPException(status_code=400, detail="Task is already completed.")
-    task.status = models.TaskStatus.COMPLETED
+    task.status = "completed"
     task.completed_at = datetime.utcnow()
     task.updated_at = datetime.utcnow()
     db.commit()

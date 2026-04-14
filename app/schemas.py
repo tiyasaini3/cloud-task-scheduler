@@ -2,14 +2,13 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import datetime, timezone
 from uuid import UUID
-from app.models import TaskStatus, ReminderStatus
 
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     owner_id: str = Field(..., min_length=1, max_length=100)
-    deadline: datetime = Field(...)
+    deadline: datetime
     reminder_minutes_before: Optional[str] = Field("30")
     tags: Optional[str] = None
     priority: Optional[str] = Field("medium")
@@ -49,7 +48,7 @@ class TaskUpdate(BaseModel):
     reminder_minutes_before: Optional[str] = None
     tags: Optional[str] = None
     priority: Optional[str] = None
-    status: Optional[TaskStatus] = None
+    status: Optional[str] = None
 
     @validator("priority")
     def validate_priority(cls, v):
@@ -63,7 +62,7 @@ class TaskResponse(BaseModel):
     title: str
     description: Optional[str]
     owner_id: str
-    status: TaskStatus
+    status: str
     deadline: datetime
     reminder_minutes_before: str
     created_at: datetime
@@ -90,7 +89,7 @@ class ReminderLogResponse(BaseModel):
     owner_id: str
     scheduled_for: datetime
     sent_at: Optional[datetime]
-    status: ReminderStatus
+    status: str
     message: Optional[str]
     error_detail: Optional[str]
     attempt_count: str

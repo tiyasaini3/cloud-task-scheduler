@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Enum as SAEnum
+from sqlalchemy import Column, String, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 import enum
@@ -28,7 +28,7 @@ class Task(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     owner_id = Column(String(100), nullable=False)
-    status = Column(SAEnum(TaskStatus), default=TaskStatus.PENDING, nullable=False)
+    status = Column(String(20), default="pending", nullable=False)
     deadline = Column(DateTime(timezone=True), nullable=False)
     reminder_minutes_before = Column(String(200), default="30")
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
@@ -47,7 +47,7 @@ class ReminderLog(Base):
     owner_id = Column(String(100), nullable=False)
     scheduled_for = Column(DateTime(timezone=True), nullable=False)
     sent_at = Column(DateTime(timezone=True), nullable=True)
-    status = Column(SAEnum(ReminderStatus), default=ReminderStatus.QUEUED, nullable=False)
+    status = Column(String(20), default="queued", nullable=False)
     message = Column(Text, nullable=True)
     error_detail = Column(Text, nullable=True)
     attempt_count = Column(String(10), default="1")
