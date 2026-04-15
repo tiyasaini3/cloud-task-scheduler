@@ -54,7 +54,13 @@ def open_dashboard():
         pass
 
 # Create DB tables
-Base.metadata.create_all(bind=engine)
+@app.on_event("startup")
+def on_startup():
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables ensured.")
+    except Exception as e:
+        logger.error(f"Database init failed: {e}")
 
 # -------------------- DASHBOARD --------------------
 
