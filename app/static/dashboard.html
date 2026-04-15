@@ -504,285 +504,226 @@
 <div class="toast-container" id="toasts"></div>
 
 <script>
-const API = 'http://localhost:8000';
+const API = window.location.origin.includes("localhost")
+  ? "http://localhost:8000"
+  : ""; // supports deployed backend
+
 let currentOwner = 'tiya_001';
 let allTasks = [];
+let isLoading = false;
 
+/* ---------------- API LAYER ---------------- */
 async function apiFetch(method, path, body) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
   try {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(API + path, opts);
-    const data = await r.json();
-    return { ok: r.ok, status: r.status, data };
-  } catch (e) {
-    return { ok: false, status: 0, data: { error: 'Cannot reach API at ' + API } };
+    const res = await fetch(API + path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.detail || data.error || 'Request failed');
+    }
+
+    return data;
+  } catch (err) {
+    console.error("API ERROR:", err.message);
+    toast(err.message || "API error", "error");
+    return null;
   }
 }
 
+/* ---------------- UTIL ---------------- */
 function toast(msg, type = '') {
   const el = document.createElement('div');
   el.className = 'toast ' + type;
   el.textContent = msg;
   document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  setTimeout(() => el.remove(), 3000);
 }
 
 function esc(s) {
-  if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return s ? String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;') : '';
 }
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-}
-
-function deadlineLabel(iso, status) {
-  if (status === 'completed') return `<span>Completed</span>`;
-  const d = new Date(iso);
-  const diff = d - Date.now();
-  const h = Math.round(diff / 36e5);
-  const cls = diff < 0 ? 'overdue' : diff < 3600000 * 24 ? 'deadline-soon' : '';
-  const label = diff < 0 ? 'Overdue' : h < 24 ? h + 'h left' : Math.round(h/24) + 'd left';
-  return `<span class="${cls}">Due ${fmtDate(iso)} &bull; ${label}</span>`;
-}
-
+/* ---------------- LOADERS ---------------- */
 async function loadHealth() {
-  const r = await apiFetch('GET', '/health');
+  const data = await apiFetch('GET', '/health');
   const pill = document.getElementById('health-pill');
-  if (r.ok) {
-    const d = r.data;
-    const allOk = [d.database, d.redis, d.queue].every(v => v === 'ok');
-    pill.innerHTML = `<span class="dot ${allOk ? 'dot-green' : 'dot-yellow'}"></span> ${allOk ? 'All systems go' : 'Degraded'}`;
-    const status = (val) => val === 'ok'
-      ? '<span style="color:#34c759">&#10003; Online</span>'
-      : `<span style="color:#ff3b30">&#10007; ${esc(val)}</span>`;
-    document.getElementById('s-api').innerHTML = '<span style="color:#34c759">&#10003; Online</span>';
-    document.getElementById('s-db').innerHTML = status(d.database);
-    document.getElementById('s-redis').innerHTML = status(d.redis);
-    document.getElementById('s-queue').innerHTML = status(d.queue);
-  } else {
-    pill.innerHTML = `<span class="dot dot-red"></span> API offline`;
-    ['s-api','s-db','s-redis','s-queue'].forEach(id =>
-      document.getElementById(id).innerHTML = '<span style="color:#ff3b30">&#10007; Offline</span>');
+
+  if (!data) {
+    pill.innerHTML = `<span class="dot dot-red"></span> Offline`;
+    return;
   }
-  const qr = await apiFetch('GET', '/queue/depth');
-  if (qr.ok) document.getElementById('m-queue').textContent = qr.data.queue_depth ?? 0;
+
+  const ok = [data.database, data.redis, data.queue].every(v => v === 'ok');
+
+  pill.innerHTML = `
+    <span class="dot ${ok ? 'dot-green' : 'dot-yellow'}"></span>
+    ${ok ? 'All systems go' : 'Degraded'}
+  `;
+
+  document.getElementById('s-api').innerHTML = '✓ Online';
+  document.getElementById('s-db').innerHTML = data.database;
+  document.getElementById('s-redis').innerHTML = data.redis;
+  document.getElementById('s-queue').innerHTML = data.queue;
+
+  const q = await apiFetch('GET', '/queue/depth');
+  if (q) document.getElementById('m-queue').textContent = q.queue_depth ?? 0;
 }
 
 async function loadTasks() {
-  const owner = currentOwner;
-  document.getElementById('m-owner').textContent = owner;
-  const r = await apiFetch('GET', `/tasks?owner_id=${encodeURIComponent(owner)}&page_size=100`);
-  if (!r.ok) { toast('Could not load tasks: ' + (r.data.detail || r.data.error), 'error'); return; }
-  allTasks = r.data.tasks || [];
-  const total = r.data.total || allTasks.length;
+  if (isLoading) return;
+  isLoading = true;
+
+  const data = await apiFetch(
+    'GET',
+    `/tasks?owner_id=${encodeURIComponent(currentOwner)}&page_size=100`
+  );
+
+  if (!data) {
+    isLoading = false;
+    return;
+  }
+
+  allTasks = data.tasks || [];
+
+  updateMetrics();
+  renderRecent();
+  filterTasks();
+
+  isLoading = false;
+}
+
+function updateMetrics() {
+  const total = allTasks.length;
   const scheduled = allTasks.filter(t => t.status === 'scheduled').length;
   const completed = allTasks.filter(t => t.status === 'completed').length;
+
   document.getElementById('m-total').textContent = total;
   document.getElementById('m-scheduled').textContent = scheduled;
   document.getElementById('m-completed').textContent = completed;
+
   document.getElementById('nav-total').textContent = total;
   document.getElementById('nav-scheduled').textContent = scheduled;
   document.getElementById('nav-completed').textContent = completed;
-  document.getElementById('tasks-count-label').textContent = `${total} task${total !== 1 ? 's' : ''} for ${owner}`;
-  renderRecent();
-  filterTasks();
+
+  document.getElementById('tasks-count-label').textContent =
+    `${total} tasks for ${currentOwner}`;
 }
 
-function renderRecent() {
-  const el = document.getElementById('recent-tasks');
-  const recent = [...allTasks].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
-  if (!recent.length) {
-    el.innerHTML = '<div class="empty-state" style="padding:2rem"><div class="empty-icon">&#9711;</div><div>No tasks yet</div></div>';
-    return;
-  }
-  el.innerHTML = recent.map(t => renderTaskCard(t, true)).join('');
-}
-
-function filterTasks() {
-  const search = document.getElementById('filter-search').value.toLowerCase();
-  const status = document.getElementById('filter-status').value;
-  const priority = document.getElementById('filter-priority').value;
-  let tasks = allTasks;
-  if (search) tasks = tasks.filter(t => t.title.toLowerCase().includes(search));
-  if (status) tasks = tasks.filter(t => t.status === status);
-  if (priority) tasks = tasks.filter(t => t.priority === priority);
-  const el = document.getElementById('tasks-list');
-  if (!tasks.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128269;</div><div class="empty-title">No tasks found</div><div>Try adjusting your filters</div></div>';
-    return;
-  }
-  el.innerHTML = tasks.map(t => renderTaskCard(t, false)).join('');
-}
-
-function renderTaskCard(t, compact) {
-  const completeBtn = t.status !== 'completed'
-    ? `<button class="btn btn-success btn-sm" onclick="completeTask('${t.id}')">&#10003; Mark complete</button>` : '';
-  const reminderInfo = t.reminder_minutes_before
-    ? t.reminder_minutes_before.split(',').map(m => m.trim() + ' min').join(', ') + ' before deadline'
-    : '';
-  return `<div class="task-card ${t.status === 'completed' ? 'completed' : ''}">
-    <div class="task-top">
-      <div class="task-name">${esc(t.title)}</div>
-      <div class="task-badges">
-        <span class="badge badge-${t.priority}">${t.priority}</span>
-        <span class="badge badge-${t.status}">${t.status}</span>
-      </div>
-    </div>
-    <div class="task-meta">
-      <div class="task-meta-item">&#128197; ${deadlineLabel(t.deadline, t.status)}</div>
-      ${reminderInfo ? `<div class="task-meta-item">&#9201; Reminders: ${esc(reminderInfo)}</div>` : ''}
-      ${t.tags ? `<div class="task-meta-item">&#127991; ${esc(t.tags)}</div>` : ''}
-    </div>
-    ${t.description && !compact ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
-    <div class="task-actions">
-      ${completeBtn}
-      <button class="btn btn-secondary btn-sm" onclick="viewReminders('${t.id}', '${esc(t.title).replace(/'/g,"\\'")}')">&#9201; Reminders</button>
-      ${!compact ? `<button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">&#128465; Delete</button>` : ''}
-    </div>
-  </div>`;
-}
-
+/* ---------------- TASK ACTIONS ---------------- */
 async function createTask() {
   const title = document.getElementById('f-title').value.trim();
   const owner = document.getElementById('f-owner').value.trim();
   const deadline = document.getElementById('f-deadline').value;
-  const errEl = document.getElementById('create-error');
-  errEl.style.display = 'none';
+
   if (!title || !owner || !deadline) {
-    errEl.textContent = 'Title, owner ID, and deadline are required.';
-    errEl.style.display = 'block'; return;
+    toast("Missing required fields", "error");
+    return;
   }
-  const btn = document.getElementById('create-btn');
-  btn.disabled = true; btn.textContent = 'Creating...';
-  const body = {
-    title, owner_id: owner,
+
+  const newTask = await apiFetch('POST', '/tasks', {
+    title,
+    owner_id: owner,
     deadline: new Date(deadline).toISOString(),
     priority: document.getElementById('f-priority').value,
-    reminder_minutes_before: document.getElementById('f-reminders').value || '30',
-    description: document.getElementById('f-desc').value || undefined,
-    tags: document.getElementById('f-tags').value || undefined,
-  };
-  const r = await apiFetch('POST', '/tasks', body);
-  btn.disabled = false; btn.textContent = 'Create task';
-  if (r.ok) {
-    toast('Task created successfully', 'success');
-    closeCreateModal();
-    currentOwner = owner;
-    document.getElementById('sidebar-owner').value = owner;
-    document.getElementById('owner-display').textContent = owner;
-    loadAll();
-  } else {
-    const detail = r.data.detail;
-    const msg = Array.isArray(detail) ? detail.map(d => d.msg).join(', ') : (detail || r.data.error || 'Unknown error');
-    errEl.textContent = msg;
-    errEl.style.display = 'block';
-  }
+    reminder_minutes_before: document.getElementById('f-reminders').value,
+    description: document.getElementById('f-desc').value,
+    tags: document.getElementById('f-tags').value,
+  });
+
+  if (!newTask) return;
+
+  // optimistic update
+  allTasks.unshift(newTask);
+  updateMetrics();
+  renderRecent();
+  filterTasks();
+
+  closeCreateModal();
+  toast("Task created", "success");
 }
 
 async function completeTask(id) {
-  const r = await apiFetch('POST', `/tasks/${id}/complete`);
-  if (r.ok) { toast('Task marked as complete', 'success'); loadAll(); }
-  else toast('Error: ' + (r.data.detail || 'Could not complete task'), 'error');
+  const res = await apiFetch('POST', `/tasks/${id}/complete`);
+  if (!res) return;
+
+  const t = allTasks.find(t => t.id === id);
+  if (t) t.status = 'completed';
+
+  updateMetrics();
+  filterTasks();
+  toast("Completed", "success");
 }
 
 async function deleteTask(id) {
-  if (!confirm('Delete this task? This cannot be undone.')) return;
-  const r = await apiFetch('DELETE', `/tasks/${id}`);
-  if (r.ok) { toast('Task deleted', ''); loadAll(); }
-  else toast('Error: ' + (r.data.detail || 'Could not delete'), 'error');
-}
+  if (!confirm("Delete task?")) return;
 
-async function viewReminders(id, title) {
-  document.getElementById('rem-title').textContent = title;
-  document.getElementById('rem-content').innerHTML = '<div style="text-align:center;padding:2rem"><div class="spinner"></div></div>';
-  document.getElementById('reminders-modal').classList.add('open');
-  const [rr, rs] = await Promise.all([
-    apiFetch('GET', `/tasks/${id}/reminders`),
-    apiFetch('GET', `/tasks/${id}/state`)
-  ]);
-  let html = '';
-  if (rs.ok) {
-    const s = rs.data;
-    const stateColor = s.state === 'completed' ? '#34c759' : s.state === 'failed' ? '#ff3b30' : '#0071e3';
-    html += `<div style="background:#f5f5f7;border-radius:10px;padding:12px 14px;margin-bottom:14px">
-      <div style="font-size:11px;color:#86868b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Redis job state</div>
-      <div style="font-size:15px;font-weight:600;color:${stateColor}">${esc(s.state)}</div>
-      ${s.meta && s.meta.reminders_queued !== undefined ? `<div style="font-size:12px;color:#86868b;margin-top:2px">${s.meta.reminders_queued} reminder job(s) queued</div>` : ''}
-    </div>`;
-  }
-  if (rr.ok && rr.data.length > 0) {
-    html += `<div style="font-size:12px;font-weight:600;color:#86868b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Reminder schedule</div>`;
-    html += '<div class="reminder-list">';
-    html += rr.data.map(rem => {
-      const cls = `reminder-${rem.status}`;
-      const time = fmtDate(rem.scheduled_for);
-      const sentAt = rem.sent_at ? `<div style="font-size:11px;color:#86868b">Fired at ${fmtDate(rem.sent_at)}</div>` : '';
-      return `<div class="reminder-item">
-        <div class="reminder-dot ${cls}"></div>
-        <div style="flex:1">
-          <div style="font-weight:500">${time}</div>
-          ${sentAt}
-          ${rem.error_detail ? `<div style="font-size:11px;color:#ff3b30">${esc(rem.error_detail)}</div>` : ''}
-        </div>
-        <span class="badge badge-${rem.status === 'sent' ? 'completed' : rem.status === 'failed' ? 'failed' : 'pending'}">${rem.status}</span>
-      </div>`;
-    }).join('');
-    html += '</div>';
-  } else {
-    html += `<div style="text-align:center;padding:2rem;color:#86868b">
-      <div style="font-size:32px;margin-bottom:8px">&#9201;</div>
-      <div>No reminders logged yet.<br>Reminders fire when the scheduled time arrives.</div>
-    </div>`;
-  }
-  document.getElementById('rem-content').innerHTML = html;
-}
+  const res = await apiFetch('DELETE', `/tasks/${id}`);
+  if (!res) return;
 
-function openCreateModal() {
-  document.getElementById('f-owner').value = currentOwner;
-  const dt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  dt.setMinutes(0, 0, 0);
-  document.getElementById('f-deadline').value = dt.toISOString().slice(0, 16);
-  document.getElementById('create-error').style.display = 'none';
-  document.getElementById('create-modal').classList.add('open');
-}
+  allTasks = allTasks.filter(t => t.id !== id);
 
-function closeCreateModal() {
-  document.getElementById('create-modal').classList.remove('open');
-  ['f-title','f-desc','f-tags'].forEach(id => document.getElementById(id).value = '');
-}
-
-function closeRemindersModal() {
-  document.getElementById('reminders-modal').classList.remove('open');
-}
-
-function showView(v) {
-  document.getElementById('view-dashboard').style.display = v === 'dashboard' ? '' : 'none';
-  document.getElementById('view-tasks').style.display = v === 'tasks' ? '' : 'none';
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  event.currentTarget && event.currentTarget.classList.add('active');
-}
-
-function setFilter(status) {
-  document.getElementById('filter-status').value = status;
+  updateMetrics();
   filterTasks();
+  renderRecent();
+
+  toast("Deleted");
 }
 
+/* ---------------- RENDER ---------------- */
+function renderRecent() {
+  const el = document.getElementById('recent-tasks');
+  const recent = [...allTasks]
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
+    .slice(0,5);
+
+  if (!recent.length) {
+    el.innerHTML = "No tasks yet";
+    return;
+  }
+
+  el.innerHTML = recent.map(t => `<div>${esc(t.title)}</div>`).join('');
+}
+
+function filterTasks() {
+  const el = document.getElementById('tasks-list');
+  if (!allTasks.length) {
+    el.innerHTML = "No tasks";
+    return;
+  }
+
+  el.innerHTML = allTasks.map(t => `
+    <div class="task-card">
+      <div>${esc(t.title)}</div>
+      <button onclick="completeTask('${t.id}')">✓</button>
+      <button onclick="deleteTask('${t.id}')">🗑</button>
+    </div>
+  `).join('');
+}
+
+/* ---------------- INIT ---------------- */
 async function loadAll() {
   await Promise.all([loadHealth(), loadTasks()]);
 }
 
-loadAll();
+/* AUTO SYNC */
+setInterval(loadTasks, 5000); // 🔥 keeps frontend synced
 setInterval(loadHealth, 15000);
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeCreateModal(); closeRemindersModal(); }
-});
+loadAll();
 </script>
 </body>
 </html>
