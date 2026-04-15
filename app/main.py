@@ -12,6 +12,12 @@ from app.database import engine, Base, get_db
 from app import models, schemas, cache, storage
 from app.queue import enqueue_reminder, get_queue_depth, ping_queue
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -25,6 +31,11 @@ app = FastAPI(
 )
 
 Base.metadata.create_all(bind=engine)
+
+
+@app.get("/")
+def serve_dashboard():
+    return FileResponse(os.path.join("app/static", "dashboard.html"))
 
 
 @app.middleware("http")
