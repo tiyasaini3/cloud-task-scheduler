@@ -1,126 +1,215 @@
-<!-- ONLY showing changed parts to keep this readable -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Scheduler</title>
+
+<style>
+body { font-family: Arial; background:#f5f5f7; margin:0; }
+nav { background:#fff; padding:12px 20px; display:flex; justify-content:space-between; border-bottom:1px solid #ddd;}
+.layout { display:flex; }
+aside { width:200px; background:#fff; padding:15px; border-right:1px solid #ddd;}
+main { flex:1; padding:20px;}
+.btn { padding:8px 14px; background:#0071e3; color:white; border:none; border-radius:6px; cursor:pointer;}
+.task { background:#fff; padding:12px; margin-bottom:10px; border-radius:8px; border:1px solid #ddd;}
+
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); justify-content:center; align-items:center;}
+.modal-overlay.open { display:flex; }
+.modal { background:#fff; padding:20px; border-radius:12px; width:400px;}
+
+input, textarea, select { width:100%; margin-bottom:10px; padding:8px; }
+</style>
+</head>
+
+<body>
+
+<nav>
+  <div><b>TaskScheduler</b></div>
+  <div id="owner-display">tiya_001</div>
+</nav>
+
+<div class="layout">
+
+<aside>
+  <div><b>Views</b></div>
+  <div onclick="showView('dashboard')">Dashboard</div>
+  <div onclick="showView('tasks')">Tasks</div>
+
+  <hr>
+
+  <div><b>Actions</b></div>
+  <div onclick="openCreateModal()">+ New Task</div>
+
+  <hr>
+
+  <input id="sidebar-owner" value="tiya_001" oninput="updateOwner(this.value)">
+  <button onclick="loadAll()">Load</button>
+</aside>
+
+<main>
+
+<div id="view-dashboard">
+  <h2>Dashboard</h2>
+  <button class="btn" onclick="openCreateModal()">+ New Task</button>
+  <div id="recent-tasks"></div>
+</div>
+
+<div id="view-tasks" style="display:none">
+  <h2>All Tasks</h2>
+  <div id="tasks-list"></div>
+</div>
+
+</main>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="create-modal">
+  <div class="modal">
+    <h3>Create Task</h3>
+
+    <input id="f-title" placeholder="Title">
+    <textarea id="f-desc" placeholder="Description"></textarea>
+    <input id="f-owner" placeholder="Owner">
+    <input id="f-deadline" type="datetime-local">
+    <select id="f-priority">
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="low">Low</option>
+    </select>
+
+    <button class="btn" onclick="createTask()">Create</button>
+    <button onclick="closeCreateModal()">Cancel</button>
+  </div>
+</div>
 
 <script>
-const API = "http://localhost:8000"; // force correct backend
+const API = "http://localhost:8000";
 
-let currentOwner = 'tiya_001';
+let currentOwner = "tiya_001";
 let allTasks = [];
 
-/* ---------------- INIT ---------------- */
-window.onload = () => {
-  document.getElementById('f-owner').value = currentOwner; // 🔥 FIX
-  loadAll();
-};
-
-/* ---------------- CREATE ---------------- */
-async function createTask() {
-  const title = document.getElementById('f-title').value.trim();
-  const owner = document.getElementById('f-owner').value.trim();
-  const deadline = document.getElementById('f-deadline').value;
-
-  if (!title || !owner || !deadline) {
-    toast("Fill all required fields", "error");
-    return;
-  }
-
-  // 🔥 FIX reminders parsing
-  const remindersRaw = document.getElementById('f-reminders').value;
-  const reminders = remindersRaw
-    .split(',')
-    .map(x => parseInt(x.trim()))
-    .filter(x => !isNaN(x));
-
-  const res = await apiFetch('POST', '/tasks', {
-    title,
-    owner_id: owner,
-    deadline: new Date(deadline).toISOString(),
-    priority: document.getElementById('f-priority').value,
-    reminder_minutes_before: reminders,
-    description: document.getElementById('f-desc').value,
-    tags: document.getElementById('f-tags').value
-  });
-
-  if (!res) return;
-
-  allTasks.unshift(res);
-  closeCreateModal();
-  toast("Task created", "success");
-
-  loadTasks(); // 🔥 force refresh
-}
-
-/* ---------------- RENDER TASKS (FIXED UI) ---------------- */
-function filterTasks() {
-  const el = document.getElementById('tasks-list');
-
-  if (!allTasks.length) {
-    el.innerHTML = `<div class="empty-state">
-      <div class="empty-icon">📝</div>
-      <div>No tasks yet</div>
-    </div>`;
-    return;
-  }
-
-  el.innerHTML = allTasks.map(t => `
-    <div class="task-card ${t.status === 'completed' ? 'completed' : ''}">
-      
-      <div class="task-top">
-        <div class="task-name">${esc(t.title)}</div>
-        <div class="task-badges">
-          <span class="badge badge-${t.status}">${t.status}</span>
-          <span class="badge badge-${t.priority}">${t.priority}</span>
-        </div>
-      </div>
-
-      <div class="task-meta">
-        <div>📅 ${new Date(t.deadline).toLocaleString()}</div>
-      </div>
-
-      ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
-
-      <div class="task-actions">
-        ${t.status !== 'completed' ? `
-          <button class="btn btn-success btn-sm" onclick="completeTask('${t.id}')">Complete</button>
-        ` : ''}
-
-        <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">Delete</button>
-      </div>
-
-    </div>
-  `).join('');
-}
-
-/* ---------------- MODAL FIX ---------------- */
+/* ---------- UI FIXES ---------- */
 function openCreateModal() {
-  document.getElementById('create-modal').classList.add('open');
-
-  // 🔥 auto-fill owner every time
-  document.getElementById('f-owner').value = currentOwner;
+  document.getElementById("create-modal").classList.add("open");
+  document.getElementById("f-owner").value = currentOwner;
 }
 
 function closeCreateModal() {
-  document.getElementById('create-modal').classList.remove('open');
-
-  // 🔥 reset form
-  document.getElementById('f-title').value = '';
-  document.getElementById('f-desc').value = '';
-  document.getElementById('f-deadline').value = '';
-  document.getElementById('f-tags').value = '';
+  document.getElementById("create-modal").classList.remove("open");
 }
 
-/* ---------------- LOAD ---------------- */
-async function loadTasks() {
-  const data = await apiFetch(
-    'GET',
-    `/tasks?owner_id=${encodeURIComponent(currentOwner)}&page_size=100`
-  );
+function showView(view) {
+  document.getElementById("view-dashboard").style.display = view==="dashboard" ? "block":"none";
+  document.getElementById("view-tasks").style.display = view==="tasks" ? "block":"none";
+}
 
-  if (!data) return;
+function updateOwner(val){
+  currentOwner = val;
+  document.getElementById("owner-display").innerText = val;
+}
+
+/* ---------- API ---------- */
+async function apiFetch(method, path, body){
+  try{
+    const res = await fetch(API + path,{
+      method,
+      headers: {"Content-Type":"application/json"},
+      body: body ? JSON.stringify(body):undefined
+    });
+    return await res.json();
+  }catch(e){
+    alert("API error");
+    return null;
+  }
+}
+
+/* ---------- LOAD ---------- */
+async function loadTasks(){
+  const data = await apiFetch("GET", `/tasks?owner_id=${currentOwner}`);
+  if(!data) return;
 
   allTasks = data.tasks || [];
-
-  updateMetrics();
+  renderTasks();
   renderRecent();
-  filterTasks();
 }
+
+async function loadAll(){
+  await loadTasks();
+}
+
+/* ---------- CREATE ---------- */
+async function createTask(){
+  const title = document.getElementById("f-title").value;
+  const owner = document.getElementById("f-owner").value;
+  const deadline = document.getElementById("f-deadline").value;
+
+  if(!title || !owner || !deadline){
+    alert("Missing fields");
+    return;
+  }
+
+  const res = await apiFetch("POST","/tasks",{
+    title,
+    owner_id: owner,
+    deadline: new Date(deadline).toISOString(),
+    priority: document.getElementById("f-priority").value,
+    description: document.getElementById("f-desc").value
+  });
+
+  if(res){
+    closeCreateModal();
+    loadTasks();
+  }
+}
+
+/* ---------- ACTIONS ---------- */
+async function completeTask(id){
+  await apiFetch("POST",`/tasks/${id}/complete`);
+  loadTasks();
+}
+
+async function deleteTask(id){
+  await apiFetch("DELETE",`/tasks/${id}`);
+  loadTasks();
+}
+
+/* ---------- RENDER ---------- */
+function renderTasks(){
+  const el = document.getElementById("tasks-list");
+
+  if(!allTasks.length){
+    el.innerHTML = "No tasks";
+    return;
+  }
+
+  el.innerHTML = allTasks.map(t=>`
+    <div class="task">
+      <b>${t.title}</b><br>
+      ${t.status}
+      <br><br>
+      <button onclick="completeTask('${t.id}')">Complete</button>
+      <button onclick="deleteTask('${t.id}')">Delete</button>
+    </div>
+  `).join("");
+}
+
+function renderRecent(){
+  const el = document.getElementById("recent-tasks");
+
+  if(!allTasks.length){
+    el.innerHTML = "No tasks yet";
+    return;
+  }
+
+  el.innerHTML = allTasks.slice(0,5).map(t=>`
+    <div class="task">${t.title}</div>
+  `).join("");
+}
+
+/* ---------- INIT ---------- */
+loadAll();
 </script>
+
+</body>
+</html>
