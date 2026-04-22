@@ -1,729 +1,126 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Task Scheduler & Reminder Service</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f5f5f7;
-      color: #1d1d1f;
-      font-size: 14px;
-    }
-
-    /* ── Nav ── */
-    nav {
-      background: #fff;
-      border-bottom: 1px solid #e5e5e7;
-      padding: 0 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 56px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .nav-brand { font-size: 15px; font-weight: 600; color: #1d1d1f; }
-    .nav-brand span { color: #0071e3; }
-    .nav-right { display: flex; align-items: center; gap: 20px; }
-    .health-pill {
-      display: flex; align-items: center; gap: 6px;
-      background: #f5f5f7; border-radius: 20px; padding: 5px 12px;
-      font-size: 12px; font-weight: 500;
-    }
-    .dot { width: 7px; height: 7px; border-radius: 50%; }
-    .dot-green { background: #34c759; }
-    .dot-red { background: #ff3b30; }
-    .dot-yellow { background: #ff9500; }
-    .owner-badge {
-      background: #e8f0fe; color: #1a73e8;
-      border-radius: 20px; padding: 5px 12px;
-      font-size: 12px; font-weight: 500;
-    }
-
-    /* ── Layout ── */
-    .layout { display: flex; min-height: calc(100vh - 56px); }
-
-    /* ── Sidebar ── */
-    aside {
-      width: 220px;
-      background: #fff;
-      border-right: 1px solid #e5e5e7;
-      padding: 1.5rem 0;
-      flex-shrink: 0;
-    }
-    .sidebar-section { padding: 0 1rem; margin-bottom: 1.5rem; }
-    .sidebar-label {
-      font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .06em; color: #86868b; padding: 0 0.5rem; margin-bottom: 6px;
-    }
-    .nav-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 12px; border-radius: 8px; cursor: pointer;
-      font-size: 13px; font-weight: 500; color: #1d1d1f;
-      transition: background 0.15s;
-    }
-    .nav-item:hover { background: #f5f5f7; }
-    .nav-item.active { background: #e8f0fe; color: #1a73e8; }
-    .nav-icon { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-    .nav-count {
-      margin-left: auto; background: #e5e5e7; color: #86868b;
-      border-radius: 10px; padding: 1px 7px; font-size: 11px;
-    }
-    .nav-item.active .nav-count { background: #c5d8fc; color: #1a73e8; }
-
-    /* ── Main ── */
-    main { flex: 1; padding: 2rem; overflow-y: auto; }
-
-    /* ── Metrics ── */
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 2rem;
-    }
-    .metric-card {
-      background: #fff;
-      border-radius: 14px;
-      padding: 1.25rem;
-      border: 1px solid #e5e5e7;
-    }
-    .metric-label { font-size: 12px; color: #86868b; margin-bottom: 6px; }
-    .metric-value { font-size: 28px; font-weight: 600; }
-    .metric-sub { font-size: 12px; color: #86868b; margin-top: 4px; }
-    .metric-blue { color: #0071e3; }
-    .metric-green { color: #34c759; }
-    .metric-orange { color: #ff9500; }
-
-    /* ── Page header ── */
-    .page-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 1.5rem;
-    }
-    .page-title { font-size: 20px; font-weight: 600; }
-    .page-sub { font-size: 13px; color: #86868b; margin-top: 2px; }
-
-    /* ── Buttons ── */
-    .btn {
-      padding: 8px 16px; border-radius: 8px; font-size: 13px;
-      font-weight: 500; cursor: pointer; border: none;
-      font-family: inherit; transition: all 0.15s;
-    }
-    .btn-primary { background: #0071e3; color: #fff; }
-    .btn-primary:hover { background: #0077ed; }
-    .btn-secondary { background: #f5f5f7; color: #1d1d1f; border: 1px solid #e5e5e7; }
-    .btn-secondary:hover { background: #e5e5e7; }
-    .btn-danger { background: #fff2f2; color: #ff3b30; border: 1px solid #ffd6d4; }
-    .btn-danger:hover { background: #ffe5e4; }
-    .btn-success { background: #f0fff4; color: #34c759; border: 1px solid #c6f6d5; }
-    .btn-success:hover { background: #e0fae9; }
-    .btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 6px; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* ── Modal ── */
-    .modal-overlay {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.4); z-index: 200;
-      align-items: center; justify-content: center;
-    }
-    .modal-overlay.open { display: flex; }
-    .modal {
-      background: #fff; border-radius: 18px;
-      width: 520px; max-width: 95vw; max-height: 90vh;
-      overflow-y: auto; padding: 2rem;
-    }
-    .modal-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 1.5rem;
-    }
-    .modal-title { font-size: 17px; font-weight: 600; }
-    .modal-close {
-      width: 28px; height: 28px; border-radius: 50%;
-      background: #f5f5f7; border: none; cursor: pointer;
-      font-size: 16px; display: flex; align-items: center; justify-content: center;
-    }
-    .modal-close:hover { background: #e5e5e7; }
-
-    /* ── Form ── */
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .form-grid.single { grid-template-columns: 1fr; }
-    .form-group { display: flex; flex-direction: column; gap: 5px; }
-    .form-group.full { grid-column: 1 / -1; }
-    label { font-size: 12px; font-weight: 500; color: #86868b; }
-    input, select, textarea {
-      padding: 9px 12px; border: 1px solid #e5e5e7; border-radius: 8px;
-      font-size: 13px; font-family: inherit; color: #1d1d1f;
-      background: #fff; outline: none; transition: border 0.15s;
-    }
-    input:focus, select:focus, textarea:focus { border-color: #0071e3; }
-    textarea { resize: vertical; min-height: 70px; }
-    .form-hint { font-size: 11px; color: #86868b; }
-
-    /* ── Task cards ── */
-    .tasks-grid {
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .task-card {
-      background: #fff; border-radius: 14px;
-      border: 1px solid #e5e5e7; padding: 1.25rem;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .task-card:hover { border-color: #c5d8fc; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-    .task-card.completed { opacity: 0.7; }
-    .task-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-    .task-name { font-size: 15px; font-weight: 600; flex: 1; }
-    .task-badges { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
-    .badge {
-      display: inline-flex; align-items: center;
-      padding: 3px 9px; border-radius: 20px;
-      font-size: 11px; font-weight: 600;
-    }
-    .badge-scheduled { background: #e8f0fe; color: #1a73e8; }
-    .badge-pending   { background: #fff3e0; color: #e65100; }
-    .badge-completed { background: #e8f5e9; color: #2e7d32; }
-    .badge-failed    { background: #ffebee; color: #c62828; }
-    .badge-cancelled { background: #f3e5f5; color: #6a1b9a; }
-    .badge-high   { background: #ffebee; color: #c62828; }
-    .badge-medium { background: #fff3e0; color: #e65100; }
-    .badge-low    { background: #e8f5e9; color: #2e7d32; }
-    .task-meta {
-      display: flex; gap: 16px; flex-wrap: wrap;
-      font-size: 12px; color: #86868b; margin-bottom: 12px;
-    }
-    .task-meta-item { display: flex; align-items: center; gap: 4px; }
-    .task-desc { font-size: 13px; color: #555; margin-bottom: 12px; }
-    .task-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .overdue { color: #ff3b30 !important; font-weight: 500; }
-    .deadline-soon { color: #ff9500 !important; font-weight: 500; }
-
-    /* ── Progress bar (reminders) ── */
-    .reminder-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-    .reminder-item {
-      display: flex; align-items: center; gap: 12px;
-      padding: 10px 14px; border-radius: 10px;
-      background: #f5f5f7; font-size: 13px;
-    }
-    .reminder-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .reminder-sent    { background: #34c759; }
-    .reminder-queued  { background: #ff9500; }
-    .reminder-failed  { background: #ff3b30; }
-    .reminder-skipped { background: #86868b; }
-
-    /* ── State JSON ── */
-    .state-box {
-      background: #1d1d1f; color: #a8ff78; font-family: 'SF Mono', monospace;
-      font-size: 12px; border-radius: 10px; padding: 1rem;
-      white-space: pre-wrap; word-break: break-all; margin-top: 12px;
-    }
-
-    /* ── Toast ── */
-    .toast-container {
-      position: fixed; bottom: 24px; right: 24px; z-index: 300;
-      display: flex; flex-direction: column; gap: 8px;
-    }
-    .toast {
-      background: #1d1d1f; color: #fff; padding: 12px 18px;
-      border-radius: 10px; font-size: 13px; font-weight: 500;
-      animation: slideIn 0.2s ease;
-    }
-    .toast.success { background: #2e7d32; }
-    .toast.error   { background: #c62828; }
-    @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: none; opacity: 1; } }
-
-    /* ── Empty state ── */
-    .empty-state {
-      text-align: center; padding: 4rem 2rem;
-      color: #86868b;
-    }
-    .empty-icon { font-size: 48px; margin-bottom: 1rem; }
-    .empty-title { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 6px; }
-
-    /* ── Filter bar ── */
-    .filter-bar {
-      display: flex; align-items: center; gap: 10px;
-      background: #fff; border-radius: 12px; padding: 12px 16px;
-      border: 1px solid #e5e5e7; margin-bottom: 1rem;
-      flex-wrap: wrap;
-    }
-    .filter-bar input, .filter-bar select {
-      padding: 7px 11px; border-radius: 7px; font-size: 13px;
-    }
-    .filter-bar input { width: 180px; }
-
-    /* ── Tabs ── */
-    .tab-bar { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 1px solid #e5e5e7; }
-    .tab {
-      padding: 9px 16px; border-radius: 8px 8px 0 0; cursor: pointer;
-      font-size: 13px; font-weight: 500; color: #86868b;
-      border: none; background: transparent; font-family: inherit;
-      border-bottom: 2px solid transparent; margin-bottom: -1px;
-    }
-    .tab.active { color: #0071e3; border-bottom-color: #0071e3; }
-
-    /* ── Loading ── */
-    .spinner {
-      width: 20px; height: 20px; border: 2px solid #e5e5e7;
-      border-top-color: #0071e3; border-radius: 50%;
-      animation: spin 0.6s linear infinite; display: inline-block;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Responsive ── */
-    @media (max-width: 768px) {
-      aside { display: none; }
-      .metrics { grid-template-columns: 1fr 1fr; }
-      .form-grid { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-
-<!-- Nav -->
-<nav>
-  <div class="nav-brand">Task<span>Scheduler</span></div>
-  <div class="nav-right">
-    <div class="health-pill" id="health-pill">
-      <span class="dot dot-yellow"></span> Checking...
-    </div>
-    <div class="owner-badge" id="owner-display">tiya_001</div>
-  </div>
-</nav>
-
-<div class="layout">
-
-  <!-- Sidebar -->
-  <aside>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Views</div>
-      <div class="nav-item active" onclick="showView('dashboard')">
-        <span class="nav-icon">&#9632;</span> Dashboard
-      </div>
-      <div class="nav-item" onclick="showView('tasks')">
-        <span class="nav-icon">&#9675;</span> All tasks
-        <span class="nav-count" id="nav-total">0</span>
-      </div>
-      <div class="nav-item" onclick="showView('tasks'); setFilter('scheduled')">
-        <span class="nav-icon">&#9711;</span> Scheduled
-        <span class="nav-count" id="nav-scheduled">0</span>
-      </div>
-      <div class="nav-item" onclick="showView('tasks'); setFilter('completed')">
-        <span class="nav-icon">&#10003;</span> Completed
-        <span class="nav-count" id="nav-completed">0</span>
-      </div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Actions</div>
-      <div class="nav-item" onclick="openCreateModal()">
-        <span class="nav-icon">+</span> New task
-      </div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Owner</div>
-      <input id="sidebar-owner" type="text" value="tiya_001"
-        style="width:100%;padding:7px 10px;border-radius:8px;font-size:13px;border:1px solid #e5e5e7"
-        placeholder="owner_id"
-        oninput="document.getElementById('owner-display').textContent=this.value"
-        onkeydown="if(event.key==='Enter'){currentOwner=this.value;loadAll()}">
-      <div style="margin-top:6px">
-        <button class="btn btn-secondary btn-sm" style="width:100%" onclick="currentOwner=document.getElementById('sidebar-owner').value;loadAll()">Load tasks</button>
-      </div>
-    </div>
-  </aside>
-
-  <!-- Main -->
-  <main>
-
-    <!-- Dashboard view -->
-    <div id="view-dashboard">
-      <div class="page-header">
-        <div>
-          <div class="page-title">Dashboard</div>
-          <div class="page-sub">Cloud-Based Task Scheduling & Reminder Service</div>
-        </div>
-        <button class="btn btn-primary" onclick="openCreateModal()">+ New task</button>
-      </div>
-
-      <div class="metrics">
-        <div class="metric-card">
-          <div class="metric-label">Total tasks</div>
-          <div class="metric-value" id="m-total">—</div>
-          <div class="metric-sub">for <span id="m-owner">tiya_001</span></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Scheduled</div>
-          <div class="metric-value metric-blue" id="m-scheduled">—</div>
-          <div class="metric-sub">awaiting reminders</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Completed</div>
-          <div class="metric-value metric-green" id="m-completed">—</div>
-          <div class="metric-sub">finished tasks</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Queue depth</div>
-          <div class="metric-value metric-orange" id="m-queue">—</div>
-          <div class="metric-sub">pending jobs in Redis</div>
-        </div>
-      </div>
-
-      <!-- System status -->
-      <div style="background:#fff;border-radius:14px;border:1px solid #e5e5e7;padding:1.25rem;margin-bottom:1.5rem">
-        <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:#86868b;text-transform:uppercase;letter-spacing:.05em">System status</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px" id="system-status">
-          <div style="text-align:center;padding:12px;background:#f5f5f7;border-radius:10px">
-            <div style="font-size:11px;color:#86868b;margin-bottom:4px">API</div>
-            <div id="s-api" style="font-weight:600;font-size:13px">—</div>
-          </div>
-          <div style="text-align:center;padding:12px;background:#f5f5f7;border-radius:10px">
-            <div style="font-size:11px;color:#86868b;margin-bottom:4px">PostgreSQL</div>
-            <div id="s-db" style="font-weight:600;font-size:13px">—</div>
-          </div>
-          <div style="text-align:center;padding:12px;background:#f5f5f7;border-radius:10px">
-            <div style="font-size:11px;color:#86868b;margin-bottom:4px">Redis</div>
-            <div id="s-redis" style="font-weight:600;font-size:13px">—</div>
-          </div>
-          <div style="text-align:center;padding:12px;background:#f5f5f7;border-radius:10px">
-            <div style="font-size:11px;color:#86868b;margin-bottom:4px">Worker queue</div>
-            <div id="s-queue" style="font-weight:600;font-size:13px">—</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recent tasks -->
-      <div style="background:#fff;border-radius:14px;border:1px solid #e5e5e7;padding:1.25rem">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-          <div style="font-size:13px;font-weight:600;color:#86868b;text-transform:uppercase;letter-spacing:.05em">Recent tasks</div>
-          <button class="btn btn-secondary btn-sm" onclick="showView('tasks')">View all</button>
-        </div>
-        <div id="recent-tasks"><div class="empty-state" style="padding:2rem"><div class="empty-icon">&#9711;</div><div>No tasks yet — create one above</div></div></div>
-      </div>
-    </div>
-
-    <!-- Tasks view -->
-    <div id="view-tasks" style="display:none">
-      <div class="page-header">
-        <div>
-          <div class="page-title">All tasks</div>
-          <div class="page-sub" id="tasks-count-label">Loading...</div>
-        </div>
-        <button class="btn btn-primary" onclick="openCreateModal()">+ New task</button>
-      </div>
-
-      <div class="filter-bar">
-        <input id="filter-search" type="text" placeholder="Search by title..." oninput="filterTasks()">
-        <select id="filter-status" onchange="filterTasks()">
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-        </select>
-        <select id="filter-priority" onchange="filterTasks()">
-          <option value="">All priorities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <button class="btn btn-secondary btn-sm" onclick="loadAll()">&#8635; Refresh</button>
-      </div>
-
-      <div id="tasks-list" class="tasks-grid"></div>
-    </div>
-
-  </main>
-</div>
-
-<!-- Create task modal -->
-<div class="modal-overlay" id="create-modal" onclick="if(event.target===this)closeCreateModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title">Create new task</div>
-      <button class="modal-close" onclick="closeCreateModal()">&#10005;</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="form-grid">
-        <div class="form-group full">
-          <label>Task title *</label>
-          <input id="f-title" type="text" placeholder="e.g. Submit final project report">
-        </div>
-        <div class="form-group full">
-          <label>Description</label>
-          <textarea id="f-desc" placeholder="Optional notes about this task"></textarea>
-        </div>
-        <div class="form-group">
-          <label>Owner ID *</label>
-          <input id="f-owner" type="text" placeholder="e.g. tiya_001">
-        </div>
-        <div class="form-group">
-          <label>Priority</label>
-          <select id="f-priority">
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="low">Low</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Deadline *</label>
-          <input id="f-deadline" type="datetime-local">
-        </div>
-        <div class="form-group">
-          <label>Tags</label>
-          <input id="f-tags" placeholder="school, urgent, work">
-        </div>
-        <div class="form-group full">
-          <label>Reminder minutes before deadline</label>
-          <input id="f-reminders" type="text" value="60,30,10" placeholder="60,30,10">
-          <div class="form-hint">Comma-separated. e.g. "60,30,10" sends reminders 60, 30, and 10 minutes before deadline.</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-        <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
-        <button class="btn btn-primary" id="create-btn" onclick="createTask()">Create task</button>
-      </div>
-      <div id="create-error" style="display:none;background:#ffebee;color:#c62828;border-radius:8px;padding:10px 14px;font-size:13px"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Reminders modal -->
-<div class="modal-overlay" id="reminders-modal" onclick="if(event.target===this)closeRemindersModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="rem-title">Reminders</div>
-      <button class="modal-close" onclick="closeRemindersModal()">&#10005;</button>
-    </div>
-    <div id="rem-content"></div>
-  </div>
-</div>
-
-<!-- Toast container -->
-<div class="toast-container" id="toasts"></div>
+<!-- ONLY showing changed parts to keep this readable -->
 
 <script>
-const API = window.location.origin.includes("localhost")
-  ? "http://localhost:8000"
-  : ""; // supports deployed backend
+const API = "http://localhost:8000"; // force correct backend
 
 let currentOwner = 'tiya_001';
 let allTasks = [];
-let isLoading = false;
 
-/* ---------------- API LAYER ---------------- */
-async function apiFetch(method, path, body) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+/* ---------------- INIT ---------------- */
+window.onload = () => {
+  document.getElementById('f-owner').value = currentOwner; // 🔥 FIX
+  loadAll();
+};
 
-  try {
-    const res = await fetch(API + path, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data.detail || data.error || 'Request failed');
-    }
-
-    return data;
-  } catch (err) {
-    console.error("API ERROR:", err.message);
-    toast(err.message || "API error", "error");
-    return null;
-  }
-}
-
-/* ---------------- UTIL ---------------- */
-function toast(msg, type = '') {
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = msg;
-  document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.remove(), 3000);
-}
-
-function esc(s) {
-  return s ? String(s)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;') : '';
-}
-
-/* ---------------- LOADERS ---------------- */
-async function loadHealth() {
-  const data = await apiFetch('GET', '/health');
-  const pill = document.getElementById('health-pill');
-
-  if (!data) {
-    pill.innerHTML = `<span class="dot dot-red"></span> Offline`;
-    return;
-  }
-
-  const ok = [data.database, data.redis, data.queue].every(v => v === 'ok');
-
-  pill.innerHTML = `
-    <span class="dot ${ok ? 'dot-green' : 'dot-yellow'}"></span>
-    ${ok ? 'All systems go' : 'Degraded'}
-  `;
-
-  document.getElementById('s-api').innerHTML = '✓ Online';
-  document.getElementById('s-db').innerHTML = data.database;
-  document.getElementById('s-redis').innerHTML = data.redis;
-  document.getElementById('s-queue').innerHTML = data.queue;
-
-  const q = await apiFetch('GET', '/queue/depth');
-  if (q) document.getElementById('m-queue').textContent = q.queue_depth ?? 0;
-}
-
-async function loadTasks() {
-  if (isLoading) return;
-  isLoading = true;
-
-  const data = await apiFetch(
-    'GET',
-    `/tasks?owner_id=${encodeURIComponent(currentOwner)}&page_size=100`
-  );
-
-  if (!data) {
-    isLoading = false;
-    return;
-  }
-
-  allTasks = data.tasks || [];
-
-  updateMetrics();
-  renderRecent();
-  filterTasks();
-
-  isLoading = false;
-}
-
-function updateMetrics() {
-  const total = allTasks.length;
-  const scheduled = allTasks.filter(t => t.status === 'scheduled').length;
-  const completed = allTasks.filter(t => t.status === 'completed').length;
-
-  document.getElementById('m-total').textContent = total;
-  document.getElementById('m-scheduled').textContent = scheduled;
-  document.getElementById('m-completed').textContent = completed;
-
-  document.getElementById('nav-total').textContent = total;
-  document.getElementById('nav-scheduled').textContent = scheduled;
-  document.getElementById('nav-completed').textContent = completed;
-
-  document.getElementById('tasks-count-label').textContent =
-    `${total} tasks for ${currentOwner}`;
-}
-
-/* ---------------- TASK ACTIONS ---------------- */
+/* ---------------- CREATE ---------------- */
 async function createTask() {
   const title = document.getElementById('f-title').value.trim();
   const owner = document.getElementById('f-owner').value.trim();
   const deadline = document.getElementById('f-deadline').value;
 
   if (!title || !owner || !deadline) {
-    toast("Missing required fields", "error");
+    toast("Fill all required fields", "error");
     return;
   }
 
-  const newTask = await apiFetch('POST', '/tasks', {
+  // 🔥 FIX reminders parsing
+  const remindersRaw = document.getElementById('f-reminders').value;
+  const reminders = remindersRaw
+    .split(',')
+    .map(x => parseInt(x.trim()))
+    .filter(x => !isNaN(x));
+
+  const res = await apiFetch('POST', '/tasks', {
     title,
     owner_id: owner,
     deadline: new Date(deadline).toISOString(),
     priority: document.getElementById('f-priority').value,
-    reminder_minutes_before: document.getElementById('f-reminders').value,
+    reminder_minutes_before: reminders,
     description: document.getElementById('f-desc').value,
-    tags: document.getElementById('f-tags').value,
+    tags: document.getElementById('f-tags').value
   });
 
-  if (!newTask) return;
+  if (!res) return;
 
-  // optimistic update
-  allTasks.unshift(newTask);
-  updateMetrics();
-  renderRecent();
-  filterTasks();
-
+  allTasks.unshift(res);
   closeCreateModal();
   toast("Task created", "success");
+
+  loadTasks(); // 🔥 force refresh
 }
 
-async function completeTask(id) {
-  const res = await apiFetch('POST', `/tasks/${id}/complete`);
-  if (!res) return;
-
-  const t = allTasks.find(t => t.id === id);
-  if (t) t.status = 'completed';
-
-  updateMetrics();
-  filterTasks();
-  toast("Completed", "success");
-}
-
-async function deleteTask(id) {
-  if (!confirm("Delete task?")) return;
-
-  const res = await apiFetch('DELETE', `/tasks/${id}`);
-  if (!res) return;
-
-  allTasks = allTasks.filter(t => t.id !== id);
-
-  updateMetrics();
-  filterTasks();
-  renderRecent();
-
-  toast("Deleted");
-}
-
-/* ---------------- RENDER ---------------- */
-function renderRecent() {
-  const el = document.getElementById('recent-tasks');
-  const recent = [...allTasks]
-    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
-    .slice(0,5);
-
-  if (!recent.length) {
-    el.innerHTML = "No tasks yet";
-    return;
-  }
-
-  el.innerHTML = recent.map(t => `<div>${esc(t.title)}</div>`).join('');
-}
-
+/* ---------------- RENDER TASKS (FIXED UI) ---------------- */
 function filterTasks() {
   const el = document.getElementById('tasks-list');
+
   if (!allTasks.length) {
-    el.innerHTML = "No tasks";
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📝</div>
+      <div>No tasks yet</div>
+    </div>`;
     return;
   }
 
   el.innerHTML = allTasks.map(t => `
-    <div class="task-card">
-      <div>${esc(t.title)}</div>
-      <button onclick="completeTask('${t.id}')">✓</button>
-      <button onclick="deleteTask('${t.id}')">🗑</button>
+    <div class="task-card ${t.status === 'completed' ? 'completed' : ''}">
+      
+      <div class="task-top">
+        <div class="task-name">${esc(t.title)}</div>
+        <div class="task-badges">
+          <span class="badge badge-${t.status}">${t.status}</span>
+          <span class="badge badge-${t.priority}">${t.priority}</span>
+        </div>
+      </div>
+
+      <div class="task-meta">
+        <div>📅 ${new Date(t.deadline).toLocaleString()}</div>
+      </div>
+
+      ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+
+      <div class="task-actions">
+        ${t.status !== 'completed' ? `
+          <button class="btn btn-success btn-sm" onclick="completeTask('${t.id}')">Complete</button>
+        ` : ''}
+
+        <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">Delete</button>
+      </div>
+
     </div>
   `).join('');
 }
 
-/* ---------------- INIT ---------------- */
-async function loadAll() {
-  await Promise.all([loadHealth(), loadTasks()]);
+/* ---------------- MODAL FIX ---------------- */
+function openCreateModal() {
+  document.getElementById('create-modal').classList.add('open');
+
+  // 🔥 auto-fill owner every time
+  document.getElementById('f-owner').value = currentOwner;
 }
 
-/* AUTO SYNC */
-setInterval(loadTasks, 5000); // 🔥 keeps frontend synced
-setInterval(loadHealth, 15000);
+function closeCreateModal() {
+  document.getElementById('create-modal').classList.remove('open');
 
-loadAll();
+  // 🔥 reset form
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-deadline').value = '';
+  document.getElementById('f-tags').value = '';
+}
+
+/* ---------------- LOAD ---------------- */
+async function loadTasks() {
+  const data = await apiFetch(
+    'GET',
+    `/tasks?owner_id=${encodeURIComponent(currentOwner)}&page_size=100`
+  );
+
+  if (!data) return;
+
+  allTasks = data.tasks || [];
+
+  updateMetrics();
+  renderRecent();
+  filterTasks();
+}
 </script>
-</body>
-</html>
