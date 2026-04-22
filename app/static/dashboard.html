@@ -130,10 +130,28 @@ main {
 .modal {
   background:#fff;
   padding:20px;
-  border-radius:12px;
+  border-radius:14px;
   width:400px;
+  animation: pop 0.2s ease;
 }
 
+@keyframes pop {
+  from { transform: scale(0.95); opacity:0; }
+  to { transform: scale(1); opacity:1; }
+}
+
+/* TOAST */
+.toast {
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  background:#1d1d1f;
+  color:#fff;
+  padding:10px 16px;
+  border-radius:8px;
+}
+
+/* INPUTS */
 input, textarea, select {
   width:100%;
   margin-bottom:10px;
@@ -257,6 +275,20 @@ function closeCreateModal(){
   document.getElementById("create-modal").classList.remove("open");
 }
 
+/* click outside modal */
+document.getElementById("create-modal").onclick = function(e){
+  if(e.target === this) closeCreateModal();
+};
+
+/* TOAST */
+function toast(msg){
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.innerText = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2500);
+}
+
 /* API */
 async function apiFetch(method, path, body){
   try{
@@ -293,13 +325,13 @@ function updateMetrics(){
   document.getElementById("m-pending").innerText = total-completed;
 }
 
-/* CREATE */
+/* CREATE (FIXED) */
 async function createTask(){
-  const title = f-title.value;
-  const owner = f-owner.value;
-  const deadline = f-deadline.value;
+  const title = document.getElementById("f-title").value.trim();
+  const owner = document.getElementById("f-owner").value.trim();
+  const deadline = document.getElementById("f-deadline").value;
 
-  if(!title||!owner||!deadline){
+  if(!title || !owner || !deadline){
     alert("Missing fields");
     return;
   }
@@ -308,13 +340,14 @@ async function createTask(){
     title,
     owner_id: owner,
     deadline: new Date(deadline).toISOString(),
-    priority: f-priority.value,
-    description: f-desc.value
+    priority: document.getElementById("f-priority").value,
+    description: document.getElementById("f-desc").value
   });
 
   if(res){
     closeCreateModal();
     loadTasks();
+    toast("Task created ✅");
   }
 }
 
@@ -322,11 +355,13 @@ async function createTask(){
 async function completeTask(id){
   await apiFetch("POST",`/tasks/${id}/complete`);
   loadTasks();
+  toast("Completed");
 }
 
 async function deleteTask(id){
   await apiFetch("DELETE",`/tasks/${id}`);
   loadTasks();
+  toast("Deleted");
 }
 
 /* RENDER */
@@ -341,12 +376,23 @@ function renderTasks(){
   el.innerHTML = allTasks.map(t=>`
     <div class="task">
       <div class="task-top">
-        <b>${t.title}</b>
+        <div>
+          <div style="font-weight:600">${t.title}</div>
+          <div style="font-size:12px;color:#86868b">
+            ${t.description || "No description"}
+          </div>
+        </div>
         <span class="badge ${t.status}">${t.status}</span>
       </div>
-      <br>
-      <button onclick="completeTask('${t.id}')">Complete</button>
-      <button onclick="deleteTask('${t.id}')">Delete</button>
+
+      <div style="margin-top:10px;font-size:12px;color:#86868b">
+        Due: ${new Date(t.deadline).toLocaleString()}
+      </div>
+
+      <div style="margin-top:10px">
+        <button class="btn btn-secondary" onclick="completeTask('${t.id}')">✓</button>
+        <button class="btn btn-danger" onclick="deleteTask('${t.id}')">Delete</button>
+      </div>
     </div>
   `).join("");
 }
