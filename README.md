@@ -1,17 +1,18 @@
 # TaskScheduler
- 
+
 Cloud-Based Distributed Task Scheduling and Reminder Service
- 
+
 ## Team
  
 | Name | GitHub Username |
 |------|-----------------|
-| Tiya | tiyasaini3 |
+| Tiya Saini | tiyasaini3 |
  
 ## Prerequisites
  
 - Docker Desktop (or Docker Engine + Compose v2)
 - Git
+
 ## Deploy with Docker Compose
  
 This is the recommended way to run the full service stack (Postgres, Redis, API, Worker) locally.
