@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Scheduler</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:#f5f5f7;color:#1d1d1f;
+}
+
+/* NAV */
+nav{
+  height:56px;background:#fff;border-bottom:1px solid #e5e5e7;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;
+}
+.nav-brand{font-weight:600}
+.nav-brand span{color:#0071e3}
+.owner{background:#e8f0fe;color:#1a73e8;padding:6px 12px;border-radius:20px;font-size:12px}
+
+/* LAYOUT */
+.layout{display:flex;height:calc(100vh - 56px)}
+
+/* SIDEBAR */
+aside{
+  width:230px;background:#fff;border-right:1px solid #e5e5e7;padding:20px
+}
+.sidebar-label{
+  font-size:11px;color:#86868b;margin-bottom:6px;text-transform:uppercase
+}
+.nav-item{
+  padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px
+}
+.nav-item:hover{background:#f5f5f7}
+.nav-item.active{background:#e8f0fe;color:#0071e3}
+
+/* MAIN */
+main{flex:1;padding:24px;overflow:auto}
+
+/* METRICS */
+.metrics{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:12px;margin-bottom:20px
+}
+.metric{
+  background:#fff;padding:16px;border-radius:14px;border:1px solid #e5e5e7
+}
+
+/* FILTER */
+.filter-bar{
+  display:flex;gap:10px;margin-bottom:16px;
+  background:#fff;padding:12px;border-radius:12px;border:1px solid #e5e5e7
+}
+.filter-bar input,.filter-bar select{
+  padding:8px;border-radius:8px;border:1px solid #ddd
+}
+
+/* TASK */
+.task{
+  background:#fff;padding:16px;border-radius:14px;
+  border:1px solid #e5e5e7;margin-bottom:10px
+}
+.task-top{display:flex;justify-content:space-between}
+
+/* BADGES */
+.badge{font-size:11px;padding:3px 8px;border-radius:10px}
+.pending{background:#fff3e0}
+.completed{background:#e8f5e9}
+.high{background:#ffebee;color:#c62828}
+.medium{background:#fff3e0;color:#e65100}
+.low{background:#e8f5e9;color:#2e7d32}
+
+/* BUTTONS */
+.btn{padding:8px 14px;border-radius:8px;border:none;cursor:pointer}
+.btn-primary{background:#0071e3;color:#fff}
+.btn-secondary{background:#eee}
+.btn-danger{background:#ffe5e4;color:#ff3b30}
+
+/* MODAL */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.4);justify-content:center;align-items:center
+}
+.modal-overlay.open{display:flex}
+.modal{
+  background:#fff;padding:20px;border-radius:16px;width:420px;
+}
+
+/* TOAST */
+.toast{
+  position:fixed;bottom:20px;right:20px;
+  background:#1d1d1f;color:#fff;padding:10px 16px;border-radius:8px
+}
+
+/* INPUT */
+input,textarea,select{
+  width:100%;margin-bottom:10px;padding:8px;border-radius:6px;border:1px solid #ddd
+}
+</style>
+</head>
+
+<body>
+
+<nav>
+  <div class="nav-brand">Task<span>Scheduler</span></div>
+  <div class="owner" id="owner-display">tiya_001</div>
+</nav>
+
+<div class="layout">
+
+<aside>
+  <div class="sidebar-label">Views</div>
+  <div class="nav-item active" onclick="showView('dashboard')">Dashboard</div>
+  <div class="nav-item" onclick="showView('tasks')">Tasks</div>
+
+  <br>
+
+  <div class="sidebar-label">Actions</div>
+  <div class="nav-item" onclick="openCreateModal()">+ New Task</div>
+
+  <br>
+
+  <div class="sidebar-label">Owner</div>
+  <input id="sidebar-owner" value="tiya_001" oninput="updateOwner(this.value)">
+  <button class="btn btn-secondary" onclick="loadAll()">Load</button>
+</aside>
+
+<main>
+
+<!-- DASHBOARD -->
+<div id="view-dashboard">
+  <h2>Dashboard</h2><br>
+
+  <div class="metrics">
+    <div class="metric">Total<br><b id="m-total">0</b></div>
+    <div class="metric">Pending<br><b id="m-pending">0</b></div>
+    <div class="metric">Completed<br><b id="m-completed">0</b></div>
+    <div class="metric">Upcoming<br><b id="m-upcoming">0</b></div>
+  </div>
+
+  <canvas id="chart" height="100"></canvas>
+
+  <br>
+  <h3>Upcoming (Calendar View)</h3>
+  <div id="calendar"></div>
+
+  <br>
+  <h3>Recent Tasks</h3>
+  <div id="recent-tasks"></div>
+</div>
+
+<!-- TASKS -->
+<div id="view-tasks" style="display:none">
+  <h2>All Tasks</h2><br>
+
+  <div class="filter-bar">
+    <input id="search" placeholder="Search..." oninput="filterTasks()">
+    <select id="status-filter" onchange="filterTasks()">
+      <option value="">All</option>
+      <option value="pending">Pending</option>
+      <option value="completed">Completed</option>
+    </select>
+  </div>
+
+  <div id="tasks-list"></div>
+</div>
+
+</main>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="create-modal">
+  <div class="modal">
+    <h3>Create Task</h3>
+    <input id="f-title" placeholder="Title">
+    <textarea id="f-desc" placeholder="Description"></textarea>
+    <input id="f-owner">
+    <input id="f-deadline" type="datetime-local">
+    <select id="f-priority">
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="low">Low</option>
+    </select>
+    <button class="btn btn-primary" onclick="createTask()">Create</button>
+    <button class="btn" onclick="closeCreateModal()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const API="http://localhost:8000";
+let currentOwner="tiya_001";
+let allTasks=[];
+let chart;
+
+/* UI */
+function showView(v){
+  document.getElementById("view-dashboard").style.display=v==="dashboard"?"block":"none";
+  document.getElementById("view-tasks").style.display=v==="tasks"?"block":"none";
+}
+function updateOwner(v){
+  currentOwner=v;
+  document.getElementById("owner-display").innerText=v;
+}
+function openCreateModal(){
+  document.getElementById("create-modal").classList.add("open");
+  document.getElementById("f-owner").value=currentOwner;
+}
+function closeCreateModal(){
+  document.getElementById("create-modal").classList.remove("open");
+}
+document.getElementById("create-modal").onclick=e=>{
+  if(e.target.id==="create-modal")closeCreateModal();
+};
+
+/* TOAST */
+function toast(msg){
+  const t=document.createElement("div");
+  t.className="toast"; t.innerText=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2500);
+}
+
+/* API */
+async function apiFetch(method,path,body){
+  try{
+    const r=await fetch(API+path,{
+      method,
+      headers:{'Content-Type':'application/json'},
+      body:body?JSON.stringify(body):undefined
+    });
+    return await r.json();
+  }catch{toast("API error");return null;}
+}
+
+/* LOAD */
+async function loadTasks(){
+  const d=await apiFetch("GET",`/tasks?owner_id=${currentOwner}`);
+  if(!d)return;
+  allTasks=d.tasks||[];
+  updateMetrics();
+  renderTasks();
+  renderRecent();
+  renderChart();
+  renderCalendar();
+}
+
+/* METRICS */
+function updateMetrics(){
+  const total=allTasks.length;
+  const completed=allTasks.filter(t=>t.status==="completed").length;
+  const upcoming=allTasks.filter(t=>new Date(t.deadline)>new Date()).length;
+
+  document.getElementById("m-total").innerText=total;
+  document.getElementById("m-completed").innerText=completed;
+  document.getElementById("m-pending").innerText=total-completed;
+  document.getElementById("m-upcoming").innerText=upcoming;
+}
+
+/* CHART */
+function renderChart(){
+  const ctx=document.getElementById("chart");
+
+  const completed=allTasks.filter(t=>t.status==="completed").length;
+  const pending=allTasks.length-completed;
+
+  if(chart) chart.destroy();
+
+  chart=new Chart(ctx,{
+    type:"doughnut",
+    data:{
+      labels:["Completed","Pending"],
+      datasets:[{data:[completed,pending]}]
+    }
+  });
+}
+
+/* CALENDAR */
+function renderCalendar(){
+  const el=document.getElementById("calendar");
+  const upcoming=allTasks
+    .filter(t=>new Date(t.deadline)>new Date())
+    .slice(0,5);
+
+  el.innerHTML=upcoming.map(t=>
+    `<div class="task">${t.title} — ${new Date(t.deadline).toLocaleString()}</div>`
+  ).join("");
+}
+
+/* REMINDERS */
+setInterval(()=>{
+  const now=new Date();
+  allTasks.forEach(t=>{
+    const diff=(new Date(t.deadline)-now)/60000;
+    if(diff<1 && !t._notified){
+      toast(`⏰ ${t.title} due NOW`);
+      t._notified=true;
+    }
+  });
+},10000);
+
+/* CREATE */
+async function createTask(){
+  const title=document.getElementById("f-title").value.trim();
+  const owner=document.getElementById("f-owner").value.trim();
+  const deadline=document.getElementById("f-deadline").value;
+
+  if(!title||!owner||!deadline){
+    toast("Missing fields"); return;
+  }
+
+  const res=await apiFetch("POST","/tasks",{
+    title,
+    owner_id:owner,
+    deadline:new Date(deadline).toISOString(),
+    priority:document.getElementById("f-priority").value,
+    description:document.getElementById("f-desc").value
+  });
+
+  if(res){
+    closeCreateModal();
+    loadTasks();
+    toast("Created ✅");
+  }
+}
+
+/* ACTIONS */
+async function completeTask(id){
+  await apiFetch("POST",`/tasks/${id}/complete`);
+  loadTasks();
+}
+async function deleteTask(id){
+  await apiFetch("DELETE",`/tasks/${id}`);
+  loadTasks();
+}
+
+/* FILTER */
+function filterTasks(){
+  const search=document.getElementById("search").value.toLowerCase();
+  const status=document.getElementById("status-filter").value;
+
+  const filtered=allTasks.filter(t=>{
+    return (!search||t.title.toLowerCase().includes(search)) &&
+           (!status||t.status===status);
+  });
+
+  renderTasks(filtered);
+}
+
+/* RENDER */
+function renderTasks(list=allTasks){
+  const el=document.getElementById("tasks-list");
+  if(!list.length){el.innerHTML="No tasks";return;}
+
+  el.innerHTML=list.map(t=>`
+    <div class="task">
+      <div class="task-top">
+        <div>
+          <b>${t.title}</b>
+          <div style="font-size:12px;color:#86868b">${t.description||""}</div>
+        </div>
+        <span class="badge ${t.status} ${t.priority}">${t.status}</span>
+      </div>
+      <div style="font-size:12px;color:#86868b;margin-top:6px">
+        Due: ${new Date(t.deadline).toLocaleString()}
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn btn-secondary" onclick="completeTask('${t.id}')">✓</button>
+        <button class="btn btn-danger" onclick="deleteTask('${t.id}')">Delete</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderRecent(){
+  const el=document.getElementById("recent-tasks");
+  if(!allTasks.length){el.innerHTML="No tasks";return;}
+  el.innerHTML=allTasks.slice(0,5).map(t=>`
+    <div class="task">${t.title}</div>
+  `).join("");
+}
+
+/* INIT */
+function loadAll(){loadTasks();}
+setInterval(loadTasks,5000);
+loadAll();
+</script>
+
+</body>
+</html>
