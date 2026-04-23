@@ -31,6 +31,7 @@ Once running:
 - Dashboard: http://localhost:8000
 - API docs: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
+
 To stop all services:
  
 ```bash
